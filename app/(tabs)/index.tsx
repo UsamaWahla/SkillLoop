@@ -11,14 +11,21 @@ import {
   Pressable,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { calculateCompatibilityScore } from '@/lib/matching';
-
 
 type OfferedSkillWithId = {
   skill_id: string;
   level: string | null;
   skills: { name: string };
+};
+
+type Review = {
+  id: string;
+  rating: number;
+  review_text: string | null;
+  created_at: string;
 };
 
 type UserCard = {
@@ -29,6 +36,9 @@ type UserCard = {
   avatar_url: string | null;
   offeredSkills: OfferedSkillWithId[];
   compatibilityScore: number;
+  averageRating: number | null;
+  ratingCount: number;
+  reviews: Review[];
 };
 
 export default function DiscoverScreen() {
@@ -36,6 +46,7 @@ export default function DiscoverScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [users, setUsers] = useState<UserCard[]>([]);
   const [myWantedSkillIds, setMyWantedSkillIds] = useState<string[]>([]);
+  const [expandedReviews, setExpandedReviews] = useState<Set<string>>(new Set());
 
   useFocusEffect(
     useCallback(() => {
@@ -98,7 +109,18 @@ export default function DiscoverScreen() {
       return;
     }
 
-        const wantedIds = (myUserSkills ?? [])
+    const { data: allRatings, error: ratingsError } = await supabase
+      .from('ratings')
+      .select('id, rated_user_id, rating, review_text, created_at')
+      .order('created_at', { ascending: false });
+
+    if (ratingsError) {
+      Alert.alert('Error loading ratings', ratingsError.message);
+      setLoading(false);
+      return;
+    }
+
+    const wantedIds = (myUserSkills ?? [])
       .filter((s) => s.type === 'wanted')
       .map((s) => s.skill_id);
     setMyWantedSkillIds(wantedIds);
@@ -108,9 +130,9 @@ export default function DiscoverScreen() {
         (s: any) => s.user_id === profile.id
       );
 
-      const theirOfferedSkills = theirSkills.filter(
+            const theirOfferedSkills = theirSkills.filter(
         (s: any) => s.type === 'offered'
-      ) as OfferedSkillWithId[];
+      ) as unknown as OfferedSkillWithId[];
 
       const score = calculateCompatibilityScore(
         {
@@ -125,10 +147,22 @@ export default function DiscoverScreen() {
         theirSkills as any
       );
 
+      const theirRatings = (allRatings ?? []).filter(
+        (r) => r.rated_user_id === profile.id
+      );
+
+      const averageRating =
+        theirRatings.length > 0
+          ? theirRatings.reduce((sum, r) => sum + r.rating, 0) / theirRatings.length
+          : null;
+
       return {
         ...profile,
         offeredSkills: theirOfferedSkills,
         compatibilityScore: score,
+        averageRating,
+        ratingCount: theirRatings.length,
+        reviews: theirRatings as Review[],
       };
     });
 
@@ -144,6 +178,18 @@ export default function DiscoverScreen() {
     loadUsers();
   }
 
+  function toggleReviews(userId: string) {
+    setExpandedReviews((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  }
+
   function getScoreColor(score: number) {
     if (score >= 70) return '#34C759';
     if (score >= 40) return '#FF9500';
@@ -151,6 +197,8 @@ export default function DiscoverScreen() {
   }
 
   function renderUser({ item }: { item: UserCard }) {
+    const isExpanded = expandedReviews.has(item.id);
+
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -168,6 +216,16 @@ export default function DiscoverScreen() {
             {item.location ? (
               <Text style={styles.location}>{item.location}</Text>
             ) : null}
+            {item.averageRating !== null ? (
+              <View style={styles.ratingRow}>
+                <Ionicons name="star" size={14} color="#FF9500" />
+                <Text style={styles.ratingText}>
+                  {item.averageRating.toFixed(1)} ({item.ratingCount})
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.noRatingText}>No ratings yet</Text>
+            )}
           </View>
           {item.compatibilityScore > 0 && (
             <View
@@ -183,7 +241,7 @@ export default function DiscoverScreen() {
 
         {item.bio ? <Text style={styles.bio}>{item.bio}</Text> : null}
 
-                <Text style={styles.skillsLabel}>Offers:</Text>
+        <Text style={styles.skillsLabel}>Offers:</Text>
         <View style={styles.chipsRow}>
           {item.offeredSkills.length === 0 ? (
             <Text style={styles.noSkillsText}>No skills listed yet</Text>
@@ -216,11 +274,56 @@ export default function DiscoverScreen() {
                 })
               }
             >
-              <Text style={styles.requestButtonText}>
-                Request "{s.skills.name}" Session
+                            <Text style={styles.requestButtonText}>
+                {`Request "${s.skills.name}" Session`}
               </Text>
             </Pressable>
           ))}
+
+        {item.reviews.length > 0 && (
+          <>
+            <Pressable
+              style={styles.reviewsToggle}
+              onPress={() => toggleReviews(item.id)}
+            >
+              <Text style={styles.reviewsToggleText}>
+                {isExpanded ? 'Hide Reviews' : `See Reviews (${item.reviews.length})`}
+              </Text>
+              <Ionicons
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color="#007AFF"
+              />
+            </Pressable>
+
+            {isExpanded && (
+              <View style={styles.reviewsList}>
+                {item.reviews.map((review) => (
+                  <View key={review.id} style={styles.reviewItem}>
+                    <View style={styles.reviewStars}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Ionicons
+                          key={star}
+                          name={star <= review.rating ? 'star' : 'star-outline'}
+                          size={14}
+                          color="#FF9500"
+                        />
+                      ))}
+                    </View>
+                    {review.review_text ? (
+                      <Text style={styles.reviewText}>{review.review_text}</Text>
+                    ) : (
+                      <Text style={styles.noReviewText}>No written review</Text>
+                    )}
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
       </View>
     );
   }
@@ -314,6 +417,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
   },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 13,
+    color: '#444',
+    fontWeight: '600',
+  },
+  noRatingText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
   scoreBadge: {
     borderRadius: 16,
     paddingVertical: 6,
@@ -357,7 +477,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
   },
-    requestButton: {
+  requestButton: {
     backgroundColor: '#007AFF',
     borderRadius: 8,
     padding: 10,
@@ -368,6 +488,48 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
+  },
+  reviewsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  reviewsToggleText: {
+    color: '#007AFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  reviewsList: {
+    marginTop: 8,
+    gap: 10,
+  },
+  reviewItem: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 10,
+  },
+  reviewStars: {
+    flexDirection: 'row',
+    gap: 2,
+    marginBottom: 4,
+  },
+  reviewText: {
+    fontSize: 13,
+    color: '#333',
+    marginBottom: 4,
+  },
+  noReviewText: {
+    fontSize: 13,
+    color: '#999',
+    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  reviewDate: {
+    fontSize: 11,
+    color: '#999',
   },
   emptyText: {
     textAlign: 'center',
