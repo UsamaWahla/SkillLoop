@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -115,6 +115,7 @@ export default function DiscoverScreen() {
   const [appliedFilters, setAppliedFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const [draftFilters, setDraftFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
+  const isStartingChatRef = useRef(false);
 
   const filteredUsers = useMemo(
     () => filterDiscoverUsers(users, searchQuery, appliedFilters),
@@ -310,7 +311,13 @@ export default function DiscoverScreen() {
   }
 
   async function handleStartChat(item: UserCard) {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      Alert.alert('Could not open chat', 'Please sign in and try again.');
+      return;
+    }
+    if (isStartingChatRef.current) return;
+    isStartingChatRef.current = true;
+
     try {
       const skillId = pickMatchedSkillWanted(item.offeredSkills, myWantedSkillIds);
       const matchId = await ensureMatchForChat({
@@ -328,6 +335,8 @@ export default function DiscoverScreen() {
         'Could not open chat',
         error instanceof Error ? error.message : 'Unknown error'
       );
+    } finally {
+      isStartingChatRef.current = false;
     }
   }
 

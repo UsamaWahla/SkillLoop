@@ -22,6 +22,7 @@ export async function ensureMatchForChat(params: {
     .or(
       `and(user_id_1.eq.${params.currentUserId},user_id_2.eq.${params.otherUserId}),and(user_id_1.eq.${params.otherUserId},user_id_2.eq.${params.currentUserId})`
     )
+    .limit(1)
     .maybeSingle();
 
   if (lookupError) {

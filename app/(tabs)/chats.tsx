@@ -33,8 +33,6 @@ export default function ChatsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadChats = useCallback(async () => {
-    setLoading(true);
-
     try {
       const {
         data: { session },
