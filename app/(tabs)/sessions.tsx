@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,16 @@ import {
   Pressable,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { AnimatedPageView } from '@/components/ui/animated-page-view';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { Layout, type AppThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { usePagination } from '@/hooks/use-pagination';
 import { supabase } from '@/lib/supabase';
 
 type SessionItem = {
   id: string;
+  match_id: string;
   scheduled_at: string;
   duration_minutes: number;
   session_type: 'online' | 'in_person';
@@ -26,10 +32,13 @@ type SessionItem = {
 };
 
 export default function SessionsScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { page, totalPages, pageItems, direction, goNext, goPrev } = usePagination(sessions);
 
   useFocusEffect(
     useCallback(() => {
@@ -53,7 +62,7 @@ export default function SessionsScreen() {
     const { data, error } = await supabase
       .from('sessions')
       .select(
-        `id, scheduled_at, duration_minutes, session_type, status, teacher_id, learner_id,
+        `id, match_id, scheduled_at, duration_minutes, session_type, status, teacher_id, learner_id,
          skills(name),
          teacher:profiles!sessions_teacher_id_fkey(full_name),
          learner:profiles!sessions_learner_id_fkey(full_name)`
@@ -77,11 +86,11 @@ export default function SessionsScreen() {
     loadSessions();
   }
 
-   function getStatusColor(status: string) {
-    if (status === 'pending') return '#FF9500';
-    if (status === 'scheduled') return '#007AFF';
-    if (status === 'completed') return '#34C759';
-    return '#8E8E93';
+  function getStatusColor(status: string) {
+    if (status === 'pending') return theme.warning;
+    if (status === 'scheduled') return theme.primary;
+    if (status === 'completed') return theme.success;
+    return theme.textMuted;
   }
 
   async function handleRespond(sessionId: string, newStatus: 'scheduled' | 'declined') {
@@ -175,7 +184,7 @@ export default function SessionsScreen() {
   if (loading && !refreshing) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
@@ -183,27 +192,50 @@ export default function SessionsScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>My Sessions</Text>
-      <FlatList
-        data={sessions}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSession}
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            No sessions yet. Go to Discover to request one!
-          </Text>
-        }
-      />
+      <Text style={styles.subtitle}>Track requests, lessons, and completions</Text>
+      <AnimatedPageView pageKey={page} direction={direction}>
+        <FlatList
+          data={pageItems}
+          keyExtractor={(item) => item.id}
+          renderItem={renderSession}
+          scrollEnabled={pageItems.length > 0}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.primary}
+            />
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              No sessions yet. Go to Discover to request one!
+            </Text>
+          }
+          ListFooterComponent={
+            sessions.length > 0 ? (
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                onPrevious={goPrev}
+                onNext={goNext}
+                itemLabel="Page"
+              />
+            ) : null
+          }
+        />
+      </AnimatedPageView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingHorizontal: Layout.screenPadding,
+    backgroundColor: theme.background,
   },
   centered: {
     flex: 1,
@@ -212,7 +244,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    marginBottom: 4,
+    color: theme.text,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: theme.textSecondary,
     marginBottom: 16,
   },
   listContent: {
@@ -220,11 +259,16 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 12,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusMd,
     padding: 16,
     marginBottom: 16,
-    backgroundColor: '#fafafa',
+    backgroundColor: theme.surface,
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardTop: {
     flexDirection: 'row',
@@ -235,7 +279,7 @@ const styles = StyleSheet.create({
   skillName: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#000',
+    color: theme.text,
   },
   statusBadge: {
     borderRadius: 12,
@@ -250,16 +294,16 @@ const styles = StyleSheet.create({
   },
   roleText: {
     fontSize: 14,
-    color: '#444',
+    color: theme.textSecondary,
     marginBottom: 8,
   },
   detailText: {
     fontSize: 13,
-    color: '#666',
+    color: theme.textSecondary,
   },
    emptyText: {
     textAlign: 'center',
-    color: '#888',
+    color: theme.textMuted,
     marginTop: 40,
     fontSize: 15,
   },
@@ -271,19 +315,19 @@ const styles = StyleSheet.create({
   declineButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#FF3B30',
-    borderRadius: 8,
+    borderColor: theme.error,
+    borderRadius: Layout.radiusSm,
     padding: 10,
     alignItems: 'center',
   },
   declineButtonText: {
-    color: '#FF3B30',
+    color: theme.error,
     fontWeight: '600',
   },
   acceptButton: {
     flex: 1,
-    backgroundColor: '#34C759',
-    borderRadius: 8,
+    backgroundColor: theme.success,
+    borderRadius: Layout.radiusSm,
     padding: 10,
     alignItems: 'center',
   },
@@ -294,12 +338,12 @@ const styles = StyleSheet.create({
     waitingText: {
     marginTop: 8,
     fontSize: 13,
-    color: '#999',
+    color: theme.textMuted,
     fontStyle: 'italic',
   },
   completeButton: {
-    backgroundColor: '#5856D6',
-    borderRadius: 8,
+    backgroundColor: theme.secondary,
+    borderRadius: Layout.radiusSm,
     padding: 10,
     alignItems: 'center',
     marginTop: 12,
@@ -308,4 +352,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-});
+  });
+}
