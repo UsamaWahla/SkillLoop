@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,22 @@ import {
   Alert,
   RefreshControl,
   Pressable,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { AnimatedPageView } from '@/components/ui/animated-page-view';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { Layout, type AppThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { usePagination } from '@/hooks/use-pagination';
 import { supabase } from '@/lib/supabase';
 import { calculateCompatibilityScore } from '@/lib/matching';
+import { ensureMatchForChat, pickMatchedSkillWanted } from '@/lib/chat-match';
 
 type OfferedSkillWithId = {
   skill_id: string;
@@ -33,6 +44,7 @@ type UserCard = {
   full_name: string | null;
   bio: string | null;
   location: string | null;
+  preferred_language: string | null;
   avatar_url: string | null;
   offeredSkills: OfferedSkillWithId[];
   compatibilityScore: number;
@@ -41,12 +53,111 @@ type UserCard = {
   reviews: Review[];
 };
 
+const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced'] as const;
+type SkillLevelFilter = (typeof SKILL_LEVELS)[number] | null;
+
+type DiscoverFilters = {
+  skillLevel: SkillLevelFilter;
+  location: string;
+  preferredLanguage: string;
+};
+
+const EMPTY_FILTERS: DiscoverFilters = {
+  skillLevel: null,
+  location: '',
+  preferredLanguage: '',
+};
+
+function filterDiscoverUsers(users: UserCard[], searchQuery: string, filters: DiscoverFilters) {
+  const q = searchQuery.trim().toLowerCase();
+  const locationQ = filters.location.trim().toLowerCase();
+  const languageQ = filters.preferredLanguage.trim().toLowerCase();
+
+  return users.filter((user) => {
+    if (q) {
+      const matchesSkill = user.offeredSkills.some((s) =>
+        s.skills.name.toLowerCase().includes(q)
+      );
+      if (!matchesSkill) return false;
+    }
+
+    if (filters.skillLevel) {
+      const hasLevel = user.offeredSkills.some(
+        (s) => s.level?.toLowerCase() === filters.skillLevel
+      );
+      if (!hasLevel) return false;
+    }
+
+    if (locationQ) {
+      const loc = user.location?.toLowerCase() ?? '';
+      if (!loc.includes(locationQ)) return false;
+    }
+
+    if (languageQ) {
+      const lang = user.preferred_language?.toLowerCase() ?? '';
+      if (!lang.includes(languageQ)) return false;
+    }
+
+    return true;
+  });
+}
+
 export default function DiscoverScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [users, setUsers] = useState<UserCard[]>([]);
   const [myWantedSkillIds, setMyWantedSkillIds] = useState<string[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
+  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
+
+  const filteredUsers = useMemo(
+    () => filterDiscoverUsers(users, searchQuery, appliedFilters),
+    [users, searchQuery, appliedFilters]
+  );
+
+  const filterResetKey = useMemo(
+    () =>
+      JSON.stringify({
+        searchQuery,
+        ...appliedFilters,
+      }),
+    [searchQuery, appliedFilters]
+  );
+
+  const { page, totalPages, pageItems, direction, goNext, goPrev } = usePagination(
+    filteredUsers,
+    undefined,
+    filterResetKey
+  );
+
+  const hasModalFiltersActive =
+    appliedFilters.skillLevel !== null ||
+    appliedFilters.location.trim() !== '' ||
+    appliedFilters.preferredLanguage.trim() !== '';
+
+  const hasAnyFilterActive = searchQuery.trim() !== '' || hasModalFiltersActive;
+
+  function openFiltersModal() {
+    setDraftFilters(appliedFilters);
+    setFiltersModalVisible(true);
+  }
+
+  function applyDraftFilters() {
+    setAppliedFilters(draftFilters);
+    setFiltersModalVisible(false);
+  }
+
+  function clearAllFilters() {
+    setSearchQuery('');
+    setAppliedFilters(EMPTY_FILTERS);
+    setDraftFilters(EMPTY_FILTERS);
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -64,6 +175,8 @@ export default function DiscoverScreen() {
       setLoading(false);
       return;
     }
+
+    setCurrentUserId(currentUserId);
 
     const { data: myProfile, error: myProfileError } = await supabase
       .from('profiles')
@@ -191,9 +304,31 @@ export default function DiscoverScreen() {
   }
 
   function getScoreColor(score: number) {
-    if (score >= 70) return '#34C759';
-    if (score >= 40) return '#FF9500';
-    return '#8E8E93';
+    if (score >= 70) return theme.success;
+    if (score >= 40) return theme.warning;
+    return theme.textMuted;
+  }
+
+  async function handleStartChat(item: UserCard) {
+    if (!currentUserId) return;
+    try {
+      const skillId = pickMatchedSkillWanted(item.offeredSkills, myWantedSkillIds);
+      const matchId = await ensureMatchForChat({
+        currentUserId,
+        otherUserId: item.id,
+        compatibilityScore: item.compatibilityScore,
+        matchedSkillWanted: skillId,
+      });
+      router.push({
+        pathname: '/chat',
+        params: { matchId, otherName: item.full_name || 'Skill partner' },
+      });
+    } catch (error) {
+      Alert.alert(
+        'Could not open chat',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
   }
 
   function renderUser({ item }: { item: UserCard }) {
@@ -218,7 +353,7 @@ export default function DiscoverScreen() {
             ) : null}
             {item.averageRating !== null ? (
               <View style={styles.ratingRow}>
-                <Ionicons name="star" size={14} color="#FF9500" />
+                <Ionicons name="star" size={14} color={theme.star} />
                 <Text style={styles.ratingText}>
                   {item.averageRating.toFixed(1)} ({item.ratingCount})
                 </Text>
@@ -256,6 +391,14 @@ export default function DiscoverScreen() {
           )}
         </View>
 
+        <Pressable
+          style={styles.chatButton}
+          onPress={() => void handleStartChat(item)}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color={theme.primary} />
+          <Text style={styles.chatButtonText}>Chat</Text>
+        </Pressable>
+
         {item.offeredSkills
           .filter((s) => myWantedSkillIds.includes(s.skill_id))
           .map((s, idx) => (
@@ -292,7 +435,7 @@ export default function DiscoverScreen() {
               <Ionicons
                 name={isExpanded ? 'chevron-up' : 'chevron-down'}
                 size={16}
-                color="#007AFF"
+                color={theme.primary}
               />
             </Pressable>
 
@@ -306,7 +449,7 @@ export default function DiscoverScreen() {
                           key={star}
                           name={star <= review.rating ? 'star' : 'star-outline'}
                           size={14}
-                          color="#FF9500"
+                          color={theme.star}
                         />
                       ))}
                     </View>
@@ -331,7 +474,7 @@ export default function DiscoverScreen() {
   if (loading && !refreshing) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
@@ -339,29 +482,183 @@ export default function DiscoverScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Discover</Text>
-      <FlatList
-        data={users}
-        keyExtractor={(item) => item.id}
-        renderItem={renderUser}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            No other users yet. Check back once more people join!
+      <Text style={styles.subtitle}>Find skill partners matched to your goals</Text>
+
+      <View style={styles.searchRow}>
+        <View style={styles.searchInputWrap}>
+          <Ionicons name="search" size={18} color={theme.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search by skill offered..."
+            placeholderTextColor={theme.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+        </View>
+        <Pressable
+          style={[styles.filtersButton, hasModalFiltersActive && styles.filtersButtonActive]}
+          onPress={openFiltersModal}
+        >
+          <Ionicons
+            name="options-outline"
+            size={20}
+            color={hasModalFiltersActive ? theme.primaryForeground : theme.primary}
+          />
+          <Text
+            style={[
+              styles.filtersButtonText,
+              hasModalFiltersActive && styles.filtersButtonTextActive,
+            ]}
+          >
+            Filters
           </Text>
-        }
-      />
+          {hasModalFiltersActive ? <View style={styles.filtersBadge} /> : null}
+        </Pressable>
+      </View>
+
+      {hasAnyFilterActive ? (
+        <Pressable style={styles.clearFiltersRow} onPress={clearAllFilters}>
+          <Ionicons name="close-circle" size={16} color={theme.primary} />
+          <Text style={styles.clearFiltersText}>Clear filters</Text>
+        </Pressable>
+      ) : null}
+
+      <AnimatedPageView pageKey={page} direction={direction}>
+        <FlatList
+          data={pageItems}
+          keyExtractor={(item) => item.id}
+          renderItem={renderUser}
+          scrollEnabled={pageItems.length > 0}
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.primary}
+            />
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              {users.length === 0
+                ? 'No other users yet. Check back once more people join!'
+                : 'No users match your search or filters. Try adjusting them.'}
+            </Text>
+          }
+          ListFooterComponent={
+            filteredUsers.length > 0 ? (
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                onPrevious={goPrev}
+                onNext={goNext}
+                itemLabel="Page"
+              />
+            ) : null
+          }
+        />
+      </AnimatedPageView>
+
+      <Modal
+        visible={filtersModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFiltersModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setFiltersModalVisible(false)}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKeyboard}
+          >
+            <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Filters</Text>
+
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={styles.filterLabel}>Skill level offered</Text>
+                <View style={styles.filterChipsRow}>
+                  {SKILL_LEVELS.map((level) => {
+                    const selected = draftFilters.skillLevel === level;
+                    return (
+                      <Pressable
+                        key={level}
+                        style={[styles.filterChip, selected && styles.filterChipSelected]}
+                        onPress={() =>
+                          setDraftFilters((prev) => ({
+                            ...prev,
+                            skillLevel: selected ? null : level,
+                          }))
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.filterChipText,
+                            selected && styles.filterChipTextSelected,
+                          ]}
+                        >
+                          {level}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.filterLabel}>Location</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  value={draftFilters.location}
+                  onChangeText={(location) =>
+                    setDraftFilters((prev) => ({ ...prev, location }))
+                  }
+                  placeholder="e.g. Lahore"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="words"
+                />
+
+                <Text style={styles.filterLabel}>Preferred language</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  value={draftFilters.preferredLanguage}
+                  onChangeText={(preferredLanguage) =>
+                    setDraftFilters((prev) => ({ ...prev, preferredLanguage }))
+                  }
+                  placeholder="e.g. English"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="words"
+                />
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={styles.modalSecondaryButton}
+                  onPress={() => {
+                    setDraftFilters(EMPTY_FILTERS);
+                  }}
+                >
+                  <Text style={styles.modalSecondaryText}>Reset</Text>
+                </Pressable>
+                <Pressable style={styles.modalPrimaryButton} onPress={applyDraftFilters}>
+                  <Text style={styles.modalPrimaryText}>Apply filters</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingHorizontal: Layout.screenPadding,
+    backgroundColor: theme.background,
   },
   centered: {
     flex: 1,
@@ -370,19 +667,206 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    marginBottom: 4,
+    color: theme.text,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginBottom: 12,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  searchInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+  },
+  searchIcon: {
+    marginRight: 6,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: theme.text,
+  },
+  filtersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderRadius: Layout.radiusSm,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: theme.surface,
+  },
+  filtersButtonActive: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  filtersButtonText: {
+    color: theme.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filtersButtonTextActive: {
+    color: theme.primaryForeground,
+  },
+  filtersBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.warning,
+  },
+  clearFiltersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginBottom: 12,
+    paddingVertical: 4,
+  },
+  clearFiltersText: {
+    color: theme.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
+  modalKeyboard: {
+    width: '100%',
+  },
+  modalSheet: {
+    backgroundColor: theme.surface,
+    borderTopLeftRadius: Layout.radiusLg,
+    borderTopRightRadius: Layout.radiusLg,
+    paddingHorizontal: Layout.screenPadding,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+    paddingTop: 12,
+    maxHeight: '85%',
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.border,
     marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.text,
+    marginBottom: 16,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.text,
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusFull,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: theme.inputBackground,
+  },
+  filterChipSelected: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  filterChipText: {
+    color: theme.text,
+    textTransform: 'capitalize',
+    fontSize: 14,
+  },
+  filterChipTextSelected: {
+    color: theme.primaryForeground,
+    fontWeight: '600',
+  },
+  filterInput: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
+    padding: 12,
+    fontSize: 15,
+    color: theme.text,
+    backgroundColor: theme.inputBackground,
+    marginBottom: 8,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalSecondaryText: {
+    color: theme.textSecondary,
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  modalPrimaryButton: {
+    flex: 1,
+    backgroundColor: theme.primary,
+    borderRadius: Layout.radiusSm,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalPrimaryText: {
+    color: theme.primaryForeground,
+    fontWeight: '700',
+    fontSize: 15,
   },
   listContent: {
     paddingBottom: 24,
   },
   card: {
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 12,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusMd,
     padding: 16,
     marginBottom: 16,
-    backgroundColor: '#fafafa',
+    backgroundColor: theme.surface,
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -393,7 +877,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#eee',
+    backgroundColor: theme.surfaceMuted,
   },
   avatarPlaceholder: {
     justifyContent: 'center',
@@ -402,7 +886,7 @@ const styles = StyleSheet.create({
   avatarPlaceholderText: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#999',
+    color: theme.textMuted,
   },
   headerText: {
     marginLeft: 12,
@@ -411,11 +895,11 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#000',
+    color: theme.text,
   },
   location: {
     fontSize: 13,
-    color: '#666',
+    color: theme.textSecondary,
   },
   ratingRow: {
     flexDirection: 'row',
@@ -425,12 +909,12 @@ const styles = StyleSheet.create({
   },
   ratingText: {
     fontSize: 13,
-    color: '#444',
+    color: theme.textSecondary,
     fontWeight: '600',
   },
   noRatingText: {
     fontSize: 12,
-    color: '#999',
+    color: theme.textMuted,
     fontStyle: 'italic',
     marginTop: 4,
   },
@@ -446,13 +930,13 @@ const styles = StyleSheet.create({
   },
   bio: {
     fontSize: 14,
-    color: '#444',
+    color: theme.textSecondary,
     marginBottom: 12,
   },
   skillsLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#333',
+    color: theme.text,
     marginBottom: 6,
   },
   chipsRow: {
@@ -461,25 +945,41 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    backgroundColor: '#007AFF20',
-    borderRadius: 16,
+    backgroundColor: theme.primaryMuted,
+    borderRadius: Layout.radiusLg,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
   chipText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontSize: 13,
     fontWeight: '600',
     textTransform: 'capitalize',
   },
   noSkillsText: {
-    color: '#999',
+    color: theme.textMuted,
     fontSize: 13,
     fontStyle: 'italic',
   },
+  chatButton: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderRadius: Layout.radiusSm,
+    paddingVertical: 10,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  chatButtonText: {
+    color: theme.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   requestButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: theme.primary,
+    borderRadius: Layout.radiusSm,
     padding: 10,
     alignItems: 'center',
     marginTop: 8,
@@ -498,7 +998,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   reviewsToggleText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -508,7 +1008,7 @@ const styles = StyleSheet.create({
   },
   reviewItem: {
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: theme.border,
     paddingTop: 10,
   },
   reviewStars: {
@@ -518,23 +1018,24 @@ const styles = StyleSheet.create({
   },
   reviewText: {
     fontSize: 13,
-    color: '#333',
+    color: theme.text,
     marginBottom: 4,
   },
   noReviewText: {
     fontSize: 13,
-    color: '#999',
+    color: theme.textMuted,
     fontStyle: 'italic',
     marginBottom: 4,
   },
   reviewDate: {
     fontSize: 11,
-    color: '#999',
+    color: theme.textMuted,
   },
   emptyText: {
     textAlign: 'center',
-    color: '#888',
+    color: theme.textMuted,
     marginTop: 40,
     fontSize: 15,
   },
-});
+  });
+}
