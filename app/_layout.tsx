@@ -1,13 +1,38 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider, type Theme } from 'expo-router/react-navigation';
 import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
+import { AppThemes } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+
+const SkillLoopLightTheme: Theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: AppThemes.light.primary,
+    background: AppThemes.light.background,
+    card: AppThemes.light.surface,
+    text: AppThemes.light.text,
+    border: AppThemes.light.border,
+  },
+};
+
+const SkillLoopDarkTheme: Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: AppThemes.dark.primary,
+    background: AppThemes.dark.background,
+    card: AppThemes.dark.surface,
+    text: AppThemes.dark.text,
+    border: AppThemes.dark.border,
+  },
+};
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -48,20 +73,28 @@ export default function RootLayout() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: AppThemes.light.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={AppThemes.light.primary} />
       </View>
     );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === 'dark' ? SkillLoopDarkTheme : SkillLoopLightTheme}>
       <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="skills" options={{ headerShown: false }} />
         <Stack.Screen name="request-session" options={{ headerShown: false }} />
         <Stack.Screen name="rate-session" options={{ headerShown: false }} />
+        <Stack.Screen name="chat" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

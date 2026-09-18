@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Layout, type AppThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { supabase } from '@/lib/supabase';
 
 type Skill = { id: string; name: string; category: string | null };
@@ -25,6 +27,8 @@ type UserSkill = {
 const LEVELS = ['beginner', 'intermediate', 'advanced'];
 
 export default function SkillsScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -154,13 +158,16 @@ export default function SkillsScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={{ backgroundColor: theme.background }}
+      contentContainerStyle={styles.container}
+    >
                  <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
           onPress={() => {
@@ -173,7 +180,7 @@ export default function SkillsScreen() {
           style={styles.backButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.primary} />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
 
@@ -247,7 +254,7 @@ export default function SkillsScreen() {
             </Pressable>
             <Pressable style={styles.addButton} onPress={handleAddSkill} disabled={submitting}>
               {submitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.primaryForeground} />
               ) : (
                 <Text style={styles.addButtonText}>Add</Text>
               )}
@@ -304,7 +311,7 @@ export default function SkillsScreen() {
             </Pressable>
             <Pressable style={styles.addButton} onPress={handleAddSkill} disabled={submitting}>
               {submitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.primaryForeground} />
               ) : (
                 <Text style={styles.addButtonText}>Add</Text>
               )}
@@ -320,16 +327,19 @@ export default function SkillsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
     container: {
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingBottom: 24,
+    backgroundColor: theme.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.background,
   },
    header: {
     paddingBottom: 16,
@@ -344,22 +354,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontSize: 17,
     fontWeight: '500',
     marginLeft: 4,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    color: theme.text,
+    letterSpacing: -0.5,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
+    color: theme.text,
   },
   emptyText: {
-    color: '#888',
+    color: theme.textMuted,
     marginBottom: 12,
   },
   skillRow: {
@@ -367,29 +380,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 8,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
     padding: 12,
     marginBottom: 8,
-    backgroundColor: '#fafafa',
+    backgroundColor: theme.surface,
   },
   skillName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: theme.text,
   },
   skillLevel: {
     fontSize: 13,
-    color: '#666',
+    color: theme.textSecondary,
     textTransform: 'capitalize',
   },
   removeText: {
-    color: '#FF3B30',
+    color: theme.error,
     fontWeight: '600',
   },
   addSkillButton: {
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: theme.primary,
     borderStyle: 'dashed',
     borderRadius: 8,
     padding: 14,
@@ -397,23 +410,23 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   addSkillText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontWeight: '600',
   },
   addForm: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
     padding: 16,
     marginTop: 8,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.surfaceMuted,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
     marginTop: 8,
-    color: '#333',
+    color: theme.text,
   },
   chipsRow: {
     flexDirection: 'row',
@@ -423,22 +436,22 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: theme.border,
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 14,
-    backgroundColor: '#fff',
+    backgroundColor: theme.inputBackground,
   },
   chipSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
   },
   chipText: {
-    color: '#333',
+    color: theme.text,
     textTransform: 'capitalize',
   },
   chipTextSelected: {
-    color: '#fff',
+    color: theme.primaryForeground,
   },
   formButtons: {
     flexDirection: 'row',
@@ -450,16 +463,17 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   cancelText: {
-    color: '#666',
+    color: theme.textSecondary,
   },
   addButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
   addButtonText: {
-    color: '#fff',
+    color: theme.primaryForeground,
     fontWeight: '600',
   },
-});
+  });
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,15 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Layout, type AppThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { supabase } from '@/lib/supabase';
 
 const DURATIONS = [30, 60, 90, 120];
 
 export default function RequestSessionScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     teacherId: string;
@@ -118,14 +122,17 @@ export default function RequestSessionScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={{ backgroundColor: theme.background }}
+      contentContainerStyle={styles.container}
+    >
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
           style={styles.backButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.primary} />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
         <Text style={styles.title}>Request Session</Text>
@@ -191,7 +198,7 @@ export default function RequestSessionScreen() {
 
       <Pressable style={styles.confirmButton} onPress={handleConfirm} disabled={submitting}>
         {submitting ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={theme.primaryForeground} />
         ) : (
           <Text style={styles.confirmButtonText}>Confirm Request</Text>
         )}
@@ -200,11 +207,13 @@ export default function RequestSessionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingBottom: 40,
+    backgroundColor: theme.background,
   },
   header: {
     paddingBottom: 16,
@@ -219,48 +228,50 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontSize: 17,
     fontWeight: '500',
     marginLeft: 4,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    color: theme.text,
+    letterSpacing: -0.5,
   },
   summaryCard: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
+    backgroundColor: theme.surfaceMuted,
+    borderRadius: Layout.radiusMd,
     padding: 16,
     marginBottom: 24,
   },
   summaryLabel: {
     fontSize: 12,
-    color: '#666',
+    color: theme.textSecondary,
     marginTop: 8,
   },
   summaryValue: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#000',
+    color: theme.text,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
     marginTop: 16,
-    color: '#333',
+    color: theme.text,
   },
   pickerButton: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
     padding: 14,
-    backgroundColor: '#fff',
+    backgroundColor: theme.inputBackground,
   },
   pickerButtonText: {
     fontSize: 16,
-    color: '#000',
+    color: theme.text,
   },
   chipsRow: {
     flexDirection: 'row',
@@ -269,25 +280,25 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: theme.border,
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 14,
-    backgroundColor: '#fff',
+    backgroundColor: theme.inputBackground,
   },
   chipSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
   },
   chipText: {
-    color: '#333',
+    color: theme.text,
   },
   chipTextSelected: {
-    color: '#fff',
+    color: theme.primaryForeground,
   },
   confirmButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: theme.primary,
+    borderRadius: Layout.radiusSm,
     padding: 16,
     alignItems: 'center',
     marginTop: 32,
@@ -297,4 +308,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-});
+  });
+}

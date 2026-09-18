@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,13 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { router, useFocusEffect } from 'expo-router';
+import { Layout, type AppThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { supabase } from '@/lib/supabase';
 
 export default function ProfileScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const scrollRef = useRef<ScrollView>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,14 +173,14 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: theme.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView ref={scrollRef} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -195,7 +199,7 @@ export default function ProfileScreen() {
             )}
             {uploadingImage && (
               <View style={styles.avatarOverlay}>
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.primaryForeground} />
               </View>
             )}
           </Pressable>
@@ -210,7 +214,7 @@ export default function ProfileScreen() {
           value={fullName}
           onChangeText={setFullName}
           placeholder="Your name"
-          placeholderTextColor="#888"
+          placeholderTextColor={theme.textMuted}
         />
 
         <Text style={styles.label}>Bio</Text>
@@ -219,7 +223,7 @@ export default function ProfileScreen() {
           value={bio}
           onChangeText={setBio}
           placeholder="Tell others about yourself"
-          placeholderTextColor="#888"
+          placeholderTextColor={theme.textMuted}
           multiline
           numberOfLines={4}
         />
@@ -230,7 +234,7 @@ export default function ProfileScreen() {
           value={location}
           onChangeText={setLocation}
           placeholder="e.g. Lahore, Pakistan"
-          placeholderTextColor="#888"
+          placeholderTextColor={theme.textMuted}
         />
 
         <Text style={styles.label}>Preferred Language</Text>
@@ -239,7 +243,7 @@ export default function ProfileScreen() {
           value={preferredLanguage}
           onChangeText={setPreferredLanguage}
           placeholder="e.g. English, Urdu"
-          placeholderTextColor="#888"
+          placeholderTextColor={theme.textMuted}
         />
 
         <Pressable
@@ -251,7 +255,7 @@ export default function ProfileScreen() {
 
         <Pressable style={styles.button} onPress={handleSave} disabled={saving}>
           {saving ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={theme.primaryForeground} />
           ) : (
             <Text style={styles.buttonText}>Save Changes</Text>
           )}
@@ -265,21 +269,26 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 24,
+    backgroundColor: theme.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.background,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginBottom: 24,
     textAlign: 'center',
+    color: theme.text,
+    letterSpacing: -0.5,
   },
   avatarContainer: {
     alignItems: 'center',
@@ -289,7 +298,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#eee',
+    backgroundColor: theme.surfaceMuted,
   },
   avatarPlaceholder: {
     justifyContent: 'center',
@@ -298,7 +307,7 @@ const styles = StyleSheet.create({
   avatarPlaceholderText: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#999',
+    color: theme.textMuted,
   },
   avatarOverlay: {
     position: 'absolute',
@@ -312,7 +321,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   changePhotoText: {
-    color: '#007AFF',
+    color: theme.primary,
     marginTop: 8,
     fontSize: 14,
     fontWeight: '600',
@@ -321,31 +330,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 6,
-    color: '#333',
+    color: theme.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
     padding: 14,
     marginBottom: 16,
     fontSize: 16,
-    color: '#000',
-    backgroundColor: '#fff',
+    color: theme.text,
+    backgroundColor: theme.inputBackground,
   },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
   },
   button: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: theme.primary,
+    borderRadius: Layout.radiusSm,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   buttonText: {
-    color: '#fff',
+    color: theme.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -355,21 +364,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoutText: {
-    color: '#FF3B30',
+    color: theme.error,
     fontSize: 16,
     fontWeight: '600',
   },
   skillsButton: {
     borderWidth: 1,
-    borderColor: '#007AFF',
-    borderRadius: 8,
+    borderColor: theme.primary,
+    borderRadius: Layout.radiusSm,
     padding: 16,
     alignItems: 'center',
     marginBottom: 16,
   },
   skillsButtonText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontSize: 16,
     fontWeight: '600',
   },
-});
+  });
+}

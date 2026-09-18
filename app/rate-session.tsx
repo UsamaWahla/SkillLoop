@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,13 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Layout, type AppThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { supabase } from '@/lib/supabase';
 
 export default function RateSessionScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ sessionId: string }>();
 
@@ -106,20 +110,23 @@ export default function RateSessionScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={{ backgroundColor: theme.background }}
+      contentContainerStyle={styles.container}
+    >
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/sessions'))}
           style={styles.backButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.primary} />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
         <Text style={styles.title}>Rate Your Session</Text>
@@ -133,7 +140,7 @@ export default function RateSessionScreen() {
             <Ionicons
               name={star <= rating ? 'star' : 'star-outline'}
               size={40}
-              color="#FF9500"
+              color={theme.star}
               style={styles.star}
             />
           </Pressable>
@@ -146,14 +153,14 @@ export default function RateSessionScreen() {
         value={reviewText}
         onChangeText={setReviewText}
         placeholder="Share your experience..."
-        placeholderTextColor="#888"
+        placeholderTextColor={theme.textMuted}
         multiline
         numberOfLines={4}
       />
 
       <Pressable style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
         {submitting ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={theme.primaryForeground} />
         ) : (
           <Text style={styles.submitButtonText}>Submit Rating</Text>
         )}
@@ -166,16 +173,19 @@ export default function RateSessionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingBottom: 40,
+    backgroundColor: theme.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.background,
   },
   header: {
     paddingBottom: 16,
@@ -190,18 +200,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backText: {
-    color: '#007AFF',
+    color: theme.primary,
     fontSize: 17,
     fontWeight: '500',
     marginLeft: 4,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    color: theme.text,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
-    color: '#444',
+    color: theme.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -217,23 +229,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
-    color: '#333',
+    color: theme.text,
   },
   textArea: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: theme.border,
+    borderRadius: Layout.radiusSm,
     padding: 14,
     fontSize: 16,
-    color: '#000',
-    backgroundColor: '#fff',
+    color: theme.text,
+    backgroundColor: theme.inputBackground,
     height: 100,
     textAlignVertical: 'top',
     marginBottom: 24,
   },
   submitButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: theme.primary,
+    borderRadius: Layout.radiusSm,
     padding: 16,
     alignItems: 'center',
     marginBottom: 16,
@@ -245,7 +257,8 @@ const styles = StyleSheet.create({
   },
   skipText: {
     textAlign: 'center',
-    color: '#888',
+    color: theme.textMuted,
     fontSize: 14,
   },
-});
+  });
+}

@@ -1,0 +1,22 @@
+/** WhatsApp-like chat palette (light theme). */
+export const WA = {
+  header: '#008069',
+  headerSubtext: 'rgba(255,255,255,0.85)',
+  wallpaper: '#ECE5DD',
+  bubbleOut: '#D9FDD3',
+  bubbleIn: '#FFFFFF',
+  text: '#111B21',
+  textSecondary: '#667781',
+  tickDefault: '#8696A0',
+  tickRead: '#53BDEB',
+  composerBg: '#F0F2F5',
+  inputBg: '#FFFFFF',
+  inputBorder: '#FFFFFF',
+  accent: '#008069',
+  replyBar: '#F0F2F2',
+  replyAccent: '#008069',
+  overlay: 'rgba(11, 20, 26, 0.45)',
+  menuBg: '#FFFFFF',
+  menuDivider: '#E9EDEF',
+  destructive: '#EA0038',
+} as const;

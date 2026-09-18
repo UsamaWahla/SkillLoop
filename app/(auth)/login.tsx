@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
-  StyleSheet,
   Pressable,
   Alert,
   ActivityIndicator,
@@ -13,9 +12,13 @@ import {
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { createAuthStyles } from '@/components/auth-screen-styles';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createAuthStyles(theme), [theme]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -46,19 +49,23 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: theme.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
+        <View style={styles.brandMark}>
+          <Text style={styles.brandLetter}>S</Text>
+        </View>
         <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.subtitle}>Sign in to continue your skill exchange</Text>
 
         <TextInput
           style={styles.input}
           placeholder="Email"
-          placeholderTextColor="#888"
+          placeholderTextColor={theme.textMuted}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -69,19 +76,19 @@ export default function LoginScreen() {
           <TextInput
             style={styles.passwordInput}
             placeholder="Password"
-            placeholderTextColor="#888"
+            placeholderTextColor={theme.textMuted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
           />
           <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-            <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color="#666" />
+            <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={theme.textSecondary} />
           </Pressable>
         </View>
 
         <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={theme.primaryForeground} />
           ) : (
             <Text style={styles.buttonText}>Log In</Text>
           )}
@@ -94,62 +101,3 @@ export default function LoginScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
-    color: '#000',
-    backgroundColor: '#fff',
-  },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginBottom: 16,
-    backgroundColor: '#fff',
-  },
-  passwordInput: {
-    flex: 1,
-    padding: 14,
-    fontSize: 16,
-    color: '#000',
-  },
-  eyeIcon: {
-    padding: 12,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  link: {
-    marginTop: 16,
-    textAlign: 'center',
-    color: '#007AFF',
-  },
-});
